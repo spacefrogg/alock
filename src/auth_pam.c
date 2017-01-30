@@ -26,6 +26,7 @@
 
 static const char *username = NULL;
 static const char *password = NULL;
+static char *pam_module = NULL;
 
 
 static int alock_auth_pam_conv(int num_msg,
@@ -88,7 +89,7 @@ static int module_authenticate(const char *pass) {
     int retval;
 
     password = pass;
-    retval = pam_start("system-auth", username, &conv, &pam_handle);
+    retval = pam_start(pam_module, username, &conv, &pam_handle);
 
     if (retval == PAM_SUCCESS)
         retval = pam_set_item(pam_handle, PAM_TTY, ttyname(0));
@@ -99,13 +100,48 @@ static int module_authenticate(const char *pass) {
     return !(retval == PAM_SUCCESS);
 }
 
+static void module_cmd_list(void) {
+
+    printf("list of available PAM module options:\n"
+           "  module=NAME\tModule name to use under /etc/pam.d/ to authenticate\n");
+}
+
+static void module_loadargs(const char *args) {
+
+    if (!args || strstr(args, "pam:") != args)
+      goto end;
+
+    char *arguments = strdup(&args[4]);
+    char *arg;
+    char *tmp;
+
+    for (tmp = arguments; tmp; ) {
+        arg = strsep(&tmp, ",");
+        if (strcmp(arg, "list") == 0) {
+            module_cmd_list();
+            exit(EXIT_SUCCESS);
+        }
+        if (strstr(arg, "module=") == arg) {
+            pam_module = strdup(&arg[7]);
+        }
+    }
+
+ end:
+    if (!pam_module)
+      pam_module = strdup("system-auth");
+}
+
+static void module_free(void) {
+    free(pam_module);
+    pam_module = NULL;
+}
 
 struct aModuleAuth alock_auth_pam = {
     { "pam",
-        module_dummy_loadargs,
+        module_loadargs,
         module_dummy_loadxrdb,
         module_init,
-        module_dummy_free,
+        module_free,
     },
     module_authenticate,
 };
